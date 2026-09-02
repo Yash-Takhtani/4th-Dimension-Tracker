@@ -16,12 +16,12 @@ It will be mounted with the lid of the case using 4 screws and heatset inserts.
 
 ### Schematic
 <p align="center">
-  <img src="./Imgs/PCB%20schematic.png" alt="Schematic" width="400">
+  <img src="./Imgs/PCB%20Schematic.png" alt="Schematic" width="400">
 </p>
 
 ### Design
 <p align="center">
-  <img src="./Imgs/PCB%20design.png" alt="Design" width="400">
+  <img src="./Imgs/PCB%20Design.png" alt="Design" width="400">
 </p>
 
 ### Preview
