@@ -14,9 +14,21 @@ The PCB is designed on Kicad for the following components -
 
 It will be mounted with the lid of the case using 4 screws and heatset inserts.
 
+### Schematic
+<p align="center">
+  <img src="./Imgs/PCB%20schematic.png" alt="Schematic" width="400">
+</p>
+
+### Design
 <p align="center">
   <img src="./Imgs/PCB%20design.png" alt="Design" width="400">
 </p>
+
+### Preview
+<p align="center">
+  <img src="./Imgs/PCB.png" alt="PCB" width="400">
+</p>
+
 
 # CAD
  - For this project there are 2 things to be 3D printed, a case and a large keycap (Slightly smaller than a usual spacebar on our keyboard)
