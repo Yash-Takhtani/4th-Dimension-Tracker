@@ -23,7 +23,7 @@ It will be mounted with the lid of the case using 4 screws and heatset inserts.
 
 
 <p align="center">
-  <img src="./Imgs/Keycap.png" alt="Keycap" width="400">
+  <img src="./Imgs/keycap.png" alt="Keycap" width="400">
 </p>
 
  - The case has hexagonal designs on the front and a text "4D!" which can be printed in a different colour and then stuck into the case. 
