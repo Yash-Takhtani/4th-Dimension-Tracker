@@ -55,8 +55,20 @@ It will be mounted with the lid of the case using 4 screws and heatset inserts.
  - There are pillar like blocks inside the case to install the heatset screws.
 
 # Firmware
+Currently a basic firmware shows the time fetching it from the internet. Complete software will be built once I recieve the hardware.
 
 # Interface & Games
+Its interface will have the following menus
+ - Home - Showing current time with any kind of background you wish
+ - Alarm - It will let you setup alarm time.
+ - Stopwatch
+ - Timer
+
+It will be having the follwing games 
+ - Simon Says
+ - Math quiz
+ - Rapid Tap!
+ - (Any other recomendations?)
 
 # BOM
 From the Blare kit - 
@@ -74,5 +86,3 @@ From the grant -
  - 3D printed case
  - 3D printed keycap
  - PCB
-
-# Next Steps
