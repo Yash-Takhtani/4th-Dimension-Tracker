@@ -86,3 +86,6 @@ From the grant -
  - 3D printed case
  - 3D printed keycap
  - PCB
+
+# AI Usage
+I mostly used google ai to help me with the firmware. Sometimes to help me with basic things like navigating around in kicad or fusion and searching up things when I got stuck.
