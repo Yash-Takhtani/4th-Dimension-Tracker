@@ -5,14 +5,14 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 
-const char* ssid     = "YOUR_WIFI_SSID";
-const char* password = "YOUR_WIFI_PASSWORD";
+const char* ssid     = "Optimus Prime";
+const char* password = "jaibhole";
 
-#define TFT_SCLK 10 // labeled SCL on the screen
-#define TFT_MOSI 11 // labeled SDA on the screen
+#define TFT_SCLK 9 // labeled SCL on the screen
+#define TFT_MOSI 10 // labeled SDA on the screen
 #define TFT_RST -1
-#define TFT_DC 5
-#define TFT_CS 6
+#define TFT_DC 6
+#define TFT_CS 7
 // #define TFT_BL -1
 
 class MyST7789 : public Adafruit_ST7789 {
@@ -52,7 +52,8 @@ void setup() {
 
 void loop() {
   timeClient.update();
-  tft.fillRect(0, 0, 200, 30, ST77XX_BLACK);
+  tft.setCursor(0, 0);
+  tft.print("              ");
   tft.setCursor(0, 0);
   tft.print(timeClient.getFormattedTime());
   delay(500);
