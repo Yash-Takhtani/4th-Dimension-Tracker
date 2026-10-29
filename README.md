@@ -66,6 +66,7 @@ The clock has a cool interface that let's you access the following menus -
 
 # Build
 **4D tracker has been built!**
+<a href="https://youtu.be/zwGX6XkCOzQ">Check out the demo video!</a>
 
 <p align="center">
   <img src="./Imgs/built.jpg" alt="4D tracker" width="400">
