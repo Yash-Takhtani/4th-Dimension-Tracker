@@ -9,8 +9,8 @@
 const char* ssid     = "";
 const char* password = "";
 
-#define TFT_SCLK 9 // SCL
-#define TFT_MOSI 10 // SDA
+#define TFT_SCLK 9
+#define TFT_MOSI 10
 #define TFT_RST -1
 #define TFT_DC 6
 #define TFT_CS 7
@@ -41,11 +41,6 @@ const int buzzer = 20;
 
 Preferences prefs;
 
-String last_home_time = "";
-int last_date = 0;
-int date = 32;
-String today = "";
-
 String months[12] = {
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
@@ -54,46 +49,47 @@ String days[7] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
 String daysShort[7] = {"S", "M", "T", "W", "T", "F", "S"};
 int day = -1;
 
+String last_time = "";
+int last_date = 0;
+int date = 32;
+String today = "";
 
 String getTime(){
   int h = timeClient.getHours();
   int m = timeClient.getMinutes();
   
   String period = (h<12) ? "AM":"PM";
-  if (h != 12){
-    h = h%12;
-  }
+  if (h != 12) h = h%12;
   h = (h == 0)?12:h; 
   char buf[9];
   sprintf(buf, "%02d:%02d %s", h, m, period.c_str());
   return String(buf);
 }
 
-void updateHomeTime(String &time){
-  time_t now = timeClient.getEpochTime();
-  struct tm *t = gmtime(&now);
+void showtimedaydate(struct tm *t){
   last_date = date;
   date = t->tm_mday;
   int month = t->tm_mon + 1;
-
   String mon = months[month-1];
   today = days[day];
   int year = t->tm_year + 1900;
+  
+  tft.setTextColor(tft.color565(255,255,255), 0x000);
   tft.setTextSize(2);
   tft.setCursor(5,55);
   tft.print(today);
   tft.setCursor(150,55);
   tft.print(String(date) + " " + mon + " " + String(year));
-
+  
   tft.setCursor(0,29);
   tft.setTextSize(3);
-  tft.setTextColor(tft.color565(255,255,255), 0x000);
-
+  
+  String time = getTime();
   int16_t x1, y1;
   uint16_t w, h;
   tft.getTextBounds(time, 0, 0, &x1, &y1, &w, &h);
   int x = (284 - w) / 2;
-
+  
   tft.setCursor(x,29);
   tft.print(time);
 }
@@ -105,10 +101,15 @@ int alarmm = 0;
 String alarmp = "AM";
 String alarmdat[3] = {"12", "00", "AM"};
 int alarmstate = 0;
+// 0 - idle
+// 1 - ringing
+// 2 - dismissed
 int alarmsettingpos = 0;
 
+int duty = 350;
+
 void setup() {
-  ledcAttach(buzzer, 2000, 8);
+  ledcAttach(buzzer, 2000, 10);
   pinMode(button1,INPUT_PULLUP);
   pinMode(button2,INPUT_PULLUP);
   pinMode(button3,INPUT_PULLUP);
@@ -125,6 +126,7 @@ void setup() {
   tft.setTextColor(tft.color565(255,255,255), 0x000);
 
   WiFi.begin(ssid, password);
+  Serial.print("Connecting");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
@@ -142,12 +144,17 @@ void setup() {
   alarmdat[1] = (alarmm < 10 ? "0" : "") + String(alarmm);
   alarmdat[2] = alarmp;
 
+  // Volume
+  duty = prefs.getInt("duty",350);
+
   timeClient.begin();
   while (!timeClient.update()) {
       timeClient.forceUpdate();
   }
   String time = getTime();
-  updateHomeTime(time);
+  time_t now = timeClient.getEpochTime();
+  struct tm *t = gmtime(&now);
+  showtimedaydate(t);
 }
 
 // ringtone
@@ -207,7 +214,7 @@ void updateMusic() {
     }
 
     ledcWriteTone(buzzer, melody[currentNote]);
-    ledcWrite(buzzer, 128);
+    ledcWrite(buzzer, duty);
 
     noteStart = now;
     noteOn = true;
@@ -218,13 +225,13 @@ void updateMusic() {
 void beep(int frequency,int duration){
   if (musicPlaying) return;
   ledcWriteTone(buzzer, frequency);
-  ledcWrite(buzzer, 128);
+  ledcWrite(buzzer, duty);
   delay(duration);
   ledcWrite(buzzer, 0);
 }
 
-int prevmode = 0;
 int mode = 0;
+int prevmode = -1;
 // 0 - home
 // 1 - stopwatch
 // 2 - timer
@@ -265,11 +272,15 @@ int swstate = 0;
 int timerh;
 int timerm;
 int timers;
-unsigned long timert;
+unsigned long timert; // the time when timer will ring
 int timersettingpos;
 int timerstate;
+// 0 reset 
+// 1 running
+// 2 pause
 int timerdat[3] = {00,00,00};
 long timeleft;
+bool ringtimer;
 
 void loop() {
   b1 = digitalRead(button1);
@@ -286,14 +297,13 @@ void loop() {
   b5pressed = ((prev_b5 == 0) && (b5 == 1));
   b6pressed = ((prev_b6 == 0) && (b6 == 1));
 
-  if (b3pressed||b4pressed||b5pressed||b6pressed){
-    beep(1500,50);
-  }
+  if ((b3pressed||b4pressed||b5pressed||b6pressed) && (mode != 0)) beep(1500,50);
+
   if (b2pressed){
-    beep(2000,50);
-    mode += 1;
-    if (mode > 3){
-      mode = 0;
+    if (mode != 5){
+      beep(2000,50);
+      mode += 1;
+      if (mode > 3) mode = 0;
     }
   }
   
@@ -303,35 +313,48 @@ void loop() {
   struct tm *t = gmtime(&now);
   day = t->tm_wday;
 
-  updateMusic();
+  //alarm ringing
   bool alarmMatches =
-  day >= 0 &&
-  alarmd[day] &&
-  time == (alarmdat[0] + ":" + alarmdat[1] + " " + alarmdat[2]);
+    day >= 0 &&
+    alarmd[day] &&
+    time == (alarmdat[0] + ":" + alarmdat[1] + " " + alarmdat[2]);
   if (alarmMatches && (alarmstate == 0) && (mode != 3)){
-    startMusic();
     alarmstate = 1;
+    mode = 5;
+    tft.fillScreen(0x0000);
+    tft.setTextSize(2);
+    tft.setTextColor(tft.color565(255,0,0), 0x000);
+    tft.setCursor(96,10);
+    tft.println("Wake Up!");
+    tft.setTextColor(tft.color565(255,255,255), 0x000);
+    startMusic();
   }
-  if ((alarmstate == 1) && b1pressed){
-    stopMusic();
-    alarmstate = 2;
-  }
-  if (!alarmMatches && alarmstate != 1){
-    alarmstate = 0;
-  }
+  if (!alarmMatches && (alarmstate != 1)) alarmstate = 0;
 
-  if (mode == 0){
+  if (mode == 0){ // home screen
     if (prevmode != 0){
       tft.fillScreen(0x000);
-      updateHomeTime(time);
+      tft.drawRect(91,9,102,12,tft.color565(255,255,255));
+      tft.fillRect(92,10,(duty/5),10,tft.color565(255,255,255));
+      showtimedaydate(t);
     }
-    if ((time != last_home_time)){
-      updateHomeTime(time);
+    if (time != last_time) showtimedaydate(t);
+    last_time = time;
+    if (b3pressed){ // v+
+      if (duty <= 475) duty += 25;
+      prefs.putInt("duty",duty);
+      beep(2000,50);
+      tft.fillRect(92,10,(duty/5),10,tft.color565(255,255,255));
     }
-    last_home_time = time;
+    if (b4pressed){ // v-
+      if (duty >= 25) duty -= 25;
+      prefs.putInt("duty",duty);
+      beep(2000,50);
+      tft.fillRect(92 + (duty/5),10,100-(duty/5),10,0x000);
+    }
   }
   
-  else if (mode == 1){
+  else if (mode == 1){ // stop watch
     if (prevmode != 1){
       tft.fillScreen(0x000);
       tft.setTextColor(tft.color565(255,255,0), 0x000);
@@ -372,10 +395,9 @@ void loop() {
       tft.setCursor(70,25);
       tft.println(buf);
     }
-
   }
   
-  else if (mode == 2){
+  else if (mode == 2){ // Timer
     if (prevmode != 2){
       tft.fillScreen(0x000);
       tft.setTextColor(tft.color565(0, 140, 255), 0x000);
@@ -392,9 +414,7 @@ void loop() {
       timers);
       tft.println(buf);
     }
-    if((timeleft <= 0) && (timerstate != 0)){
-      mode = 4;
-    }
+  
     if (timerstate == 0){
       timerdat[0] = timerh;
       timerdat[1] = timerm;
@@ -403,8 +423,15 @@ void loop() {
       tft.setTextColor(tft.color565(0,255,0), 0x000);
       tft.print(((timerdat[timersettingpos] < 10)? "0":"") + String(timerdat[timersettingpos]));
     }else if (timerstate == 1){
-      timeleft = (timert-millis())/1000;
-      // Serial.println(timeleft);
+      if(timert <= millis()){
+        mode = 4;
+        ringtimer = true;
+        timerstate = 0;
+        timeleft = 0;
+      }else{
+        timeleft = (timert-millis())/1000;
+      }
+
       char buf[9];
       snprintf(buf, sizeof(buf), "%02d:%02d:%02d",
       timeleft/3600,
@@ -429,9 +456,7 @@ void loop() {
       tft.setTextColor(tft.color565(255,255,255), 0x000);
       tft.print(((timerdat[timersettingpos] < 10)? "0":"") + String(timerdat[timersettingpos]));
       timersettingpos++;
-      if (timersettingpos > 2){
-        timersettingpos = 0;
-      }
+      if (timersettingpos > 2) timersettingpos = 0;
     }
     if (b4pressed){
       timerstate = 0;
@@ -465,31 +490,31 @@ void loop() {
       }
     }
     if (b6pressed && (timerstate == 0)){
-      if (timersettingpos == 0){
-        timeleft = timeleft - 3600000;
+      if ((timersettingpos == 0) && (timerh % 99) > 0){
+        timeleft = timeleft - 3600;
         timerh = (timerh % 99) - 1;
         timerdat[0] = timerh;
-      }else if (timersettingpos == 1){
+      }else if ((timersettingpos == 1) && (timerm % 60) > 0){
         timerm = (timerm - 1) % 60;
-        timeleft = timeleft - 60000;
+        timeleft = timeleft - 60;
         timerdat[1] = timerm;
-      }else if (timersettingpos == 2){
+      }else if ((timersettingpos == 2) && (timers % 60) > 0){
         timers = (timers - 1) % 60;
         timerdat[2] = timers;
-        timeleft = timeleft - 1000;
+        timeleft = timeleft - 1;
       }
     }
   }
   
-  else if (mode == 3){
+  else if (mode == 3){ // alarm
     if (prevmode != 3){ // show initial config
       tft.fillScreen(0x000);
       tft.setTextColor(tft.color565(255,90,90), 0x000);
       tft.setTextSize(1);
       tft.setCursor(8,10);
       tft.println("Alarm");
-      tft.setTextColor(tft.color565(255,255,255), 0x000);
 
+      tft.setTextColor(tft.color565(255,255,255), 0x000);
       tft.setTextSize(3);
       tft.setCursor(70,15);
       tft.println(alarmdat[0] + ":" + alarmdat[1] + " " + alarmp);
@@ -539,9 +564,7 @@ void loop() {
         tft.print(daysShort[alarmsettingpos-3] + " ");
       }
       alarmsettingpos++;
-      if (alarmsettingpos > 9){
-        alarmsettingpos = 0;
-      }
+      if (alarmsettingpos > 9) alarmsettingpos = 0;
     }
 
     if(b4pressed){ // increase selected
@@ -554,8 +577,8 @@ void loop() {
         prefs.putInt("alarmm",alarmm);
         alarmdat[1] = ((alarmm < 10)? "0":"") + String(alarmm);
       }else if (alarmsettingpos == 2){
-        if (alarmp == "AM") {alarmp = "PM";}
-        else {alarmp = "AM";}
+        if (alarmp == "AM") alarmp = "PM";
+        else alarmp = "AM";
         alarmdat[2] = alarmp;
         prefs.putString("alarmp", alarmp);
       }else{
@@ -574,8 +597,8 @@ void loop() {
         prefs.putInt("alarmm",alarmm);
         alarmdat[1] = (alarmm < 10 ? "0" : "") + String(alarmm);
       }else if (alarmsettingpos == 2){
-        if (alarmp == "AM") {alarmp = "PM";}
-        else {alarmp = "AM";}
+        if (alarmp == "AM") alarmp = "PM";
+        else alarmp = "AM";
         alarmdat[2] = alarmp;
         prefs.putString("alarmp", alarmp);
       }else{
@@ -584,15 +607,35 @@ void loop() {
       }
     }
     
-  }else if (mode == 4){
-    tft.fillScreen(0x000);      
-    tft.setTextColor(tft.color565(255,255,255), 0x000);
-    tft.setTextSize(3);
-    tft.setCursor(70,25);
-    tft.println("Ringing 1");
-  }else if (mode == 5){
-    tft.fillScreen(0x000);
-    tft.println("Ringing 2");
+  }else if (mode == 4){ // timer ring
+    if (ringtimer){
+      ringtimer = false;
+      startMusic();
+      tft.fillScreen(0x000);
+      tft.setTextColor(tft.color565(255,255,255), 0x000);
+      tft.setTextSize(2);
+      tft.setCursor(94,15);
+      tft.println("Time's up!");
+      tft.setTextSize(3);
+      tft.setCursor(70,40);
+      tft.println(((timerh < 10)? "0":"") + String(timerh) + ":" + ((timerm < 10)? "0":"") + String(timerm) + ":" + ((timers < 10)? "0":"") + String(timers));
+    }
+    if (b1pressed){
+      stopMusic();
+      tft.fillScreen(0x000);
+      mode = 0;
+    }
+    updateMusic();
+  }else if (mode == 5){ // alarm ring
+    updateMusic();
+    if ((alarmstate == 1) && b1pressed){
+      stopMusic();
+      alarmstate = 2;
+      mode = 0;
+      tft.fillRect(90,8,110,13,0x0000);
+    }
+    if ((time != last_time)) showtimedaydate(t);
+    last_time = time;
   }
 
   prev_b1 = b1;
