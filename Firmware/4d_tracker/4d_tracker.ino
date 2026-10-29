@@ -300,7 +300,7 @@ void loop() {
   if ((b3pressed||b4pressed||b5pressed||b6pressed) && (mode != 0)) beep(1500,50);
 
   if (b2pressed){
-    if (mode != 5){
+    if ((mode != 5) && (mode != 4)){
       beep(2000,50);
       mode += 1;
       if (mode > 3) mode = 0;
@@ -324,7 +324,7 @@ void loop() {
     tft.fillScreen(0x0000);
     tft.setTextSize(2);
     tft.setTextColor(tft.color565(255,0,0), 0x000);
-    tft.setCursor(96,10);
+    tft.setCursor(96,9);
     tft.println("Wake Up!");
     tft.setTextColor(tft.color565(255,255,255), 0x000);
     startMusic();
@@ -610,7 +610,6 @@ void loop() {
   }else if (mode == 4){ // timer ring
     if (ringtimer){
       ringtimer = false;
-      startMusic();
       tft.fillScreen(0x000);
       tft.setTextColor(tft.color565(255,255,255), 0x000);
       tft.setTextSize(2);
@@ -619,6 +618,7 @@ void loop() {
       tft.setTextSize(3);
       tft.setCursor(70,40);
       tft.println(((timerh < 10)? "0":"") + String(timerh) + ":" + ((timerm < 10)? "0":"") + String(timerm) + ":" + ((timers < 10)? "0":"") + String(timers));
+      startMusic();
     }
     if (b1pressed){
       stopMusic();
@@ -632,7 +632,9 @@ void loop() {
       stopMusic();
       alarmstate = 2;
       mode = 0;
-      tft.fillRect(90,8,110,13,0x0000);
+      tft.fillRect(90,8,110,17,0x0000);
+      tft.drawRect(91,9,102,12,tft.color565(255,255,255));
+      tft.fillRect(92,10,(duty/5),10,tft.color565(255,255,255));
     }
     if ((time != last_time)) showtimedaydate(t);
     last_time = time;
