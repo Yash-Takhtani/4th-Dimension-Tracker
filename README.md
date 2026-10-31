@@ -65,7 +65,7 @@ The clock has a cool interface that let's you access the following menus -
    - Set 3 alarms max and configure the with button 6
    - Snooze for 5 mins via button 4 while the alarm is ringing
 
-**You can now also set and alarm in the 4D tracker via your phone! Use [this](/index.html) on your phone to do so via bluetooth.**
+**You can now also set and alarm in the 4D tracker via your phone! Use [this](/alarmBLE.html) on your phone to do so via bluetooth.**
   <p align="center">
     <img src="./Imgs/ble.jpeg" alt="4D tracker" width="400">
   </p>
