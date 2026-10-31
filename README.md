@@ -60,7 +60,12 @@ The clock has a cool interface that let's you access the following menus -
  - Home - Shows time, day and date along with a volume bar. Increase or decrease the volume with 2nd and 3rd button.
  - Stopwatch - Start or stop the stopwatch with the action button, reset with 2nd button.(sometimes won't work u may have to press multiple times)
  - Timer - Lets you set the time with 2nd,4th and 5th button. Use action button to start or dimiss timer and 3rd button to reset.(sometimes won't work u may have to press multiple times)
- - Alarm - Lets you set the specific days and time for alarm using 2nd, 3rd and 4th button. Dismiss with action button.
+ - Alarm - Lets you set the specific days and time for alarm using 2nd, 3rd and 4th button. 
+   - Dismiss with action button. 
+   - You can set 3 alarms max and configure the with button 6
+   - You can snooze for 5 mins via button 4 while the alarm is ringing
+
+You can now also set and alarm in the 4D tracker via your phone! Use [this](/index.html) on your phone to do so via bluetooth.
 
 **It must be connected to wifi so that it could fetch time accurately. Therefore don't forget to add your wifi creds in the code before uploading it to the esp32 c3.**
 

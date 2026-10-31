@@ -4,16 +4,64 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Alarm Control</title>
-    <link rel="stylesheet" href="style.css">
+    <style>
+*{
+    padding: 0;
+}
+
+body{
+    background-color: rgb(35, 35, 35);
+}
+.inps{
+    width: 10vw;
+    min-height: 2vw;
+    margin: 10px;
+    border-radius: 5px;
+    border: 0px;
+    text-align: center;
+    color: black;
+}
+div{
+    justify-items: center;
+    align-items: center;
+}
+.days{
+    margin: 5px;
+    color: white;
+}
+button{
+    display: block;
+    margin: 10px;
+    color: black;
+    border: 0px;
+    border-radius: 5px;
+    padding: 2px;
+    min-width: 10vw;
+    min-height: 4vh;
+}
+button:hover{
+    background-color: rgb(199, 199, 199);
+}
+h1{
+    font-size: 30px;
+    color: white;
+}
+p{
+    color: white;
+}
+    </style>
 </head>
 <body>
     <div>
         <h1>4th Dimension Tracker</h1>
         <button onclick="connectble()">Connect</button>
         <div>
-            <input class="inps" type="text" placeholder="Hour"></input>
-            <input class="inps" type="text" placeholder="Min"></input>
-            <input class="inps" type="text" placeholder="AM/PM"></input>
+            <input id="hour" class="inps" type="number" placeholder="Hour"></input>
+            <input id="min" class="inps" type="number" placeholder="Min"></input>
+            <select id="ap" class="inps">
+                <option value="AM">AM</option>
+                <option value="PM">PM</option>
+            </select>
         </div>
         
         <div>
@@ -42,6 +90,7 @@ async function connectble() {
             acceptAllDevices: true,
             optionalServices:[SERVICE]
         });
+        document.getElementById("output").innerText = "Connecting..."
         const server = await device.gatt.connect();
         const service = await server.getPrimaryService(SERVICE);
         characteristic = await service.getCharacteristic(CHARACTERISTIC);
@@ -52,10 +101,12 @@ async function connectble() {
 }
 
 async function sendalarm(){
+    document.getElementById("output").innerText = "Sending"
     let hour = document.getElementById("hour").value;
     let min = document.getElementById("min").value;
-    let ap = document.getElementById("ap").value.toUpperCase;
+    let ap = document.getElementById("ap").value;
     const days = Array.from(document.querySelectorAll('input[type="checkbox"]')).map(box => box.checked ? 1 : 0);
+    document.getElementById("output").innerText = "Sending."
     
     let alarm = {
         hour: parseInt(hour),
@@ -68,6 +119,7 @@ async function sendalarm(){
             ap
         ]
     }
+    document.getElementById("output").innerText = "Sending.."
     const data = new TextEncoder().encode(JSON.stringify(alarm));
     document.getElementById("output").innerText = "Sending..."
     await characteristic.writeValueWithResponse(data);
