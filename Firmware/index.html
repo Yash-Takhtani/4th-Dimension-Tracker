@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Alarm Control</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div>
+        <h1>4th Dimension Tracker</h1>
+        <button onclick="connectble()">Connect</button>
+        <div>
+            <input class="inps" type="text" placeholder="Hour"></input>
+            <input class="inps" type="text" placeholder="Min"></input>
+            <input class="inps" type="text" placeholder="AM/PM"></input>
+        </div>
+        
+        <div>
+            <label class="days"><input type="checkbox">Sun</label>
+            <label class="days"><input type="checkbox">Mon</label>
+            <label class="days"><input type="checkbox">Tues</label>
+            <label class="days"><input type="checkbox">Wed</label>
+            <label class="days"><input type="checkbox">Thu</label>
+            <label class="days"><input type="checkbox">Fri</label>
+            <label class="days"><input type="checkbox">Sat</label>
+        </div>
+    
+        <button onclick="sendalarm()">Send</button>
+        <p id="output">...</p>
+    </div>
+
+    <script>
+const SERVICE = "12345678-1234-1234-1234-123456789000";
+const CHARACTERISTIC = "12345678-1234-1234-1234-123456789001";
+
+let characteristic
+
+async function connectble() {
+    try{
+        const device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices:[SERVICE]
+        });
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE);
+        characteristic = await service.getCharacteristic(CHARACTERISTIC);
+        document.getElementById("output").innerText = "Connected";
+    }catch(error){
+        alert(error);
+    }
+}
+
+async function sendalarm(){
+    let hour = document.getElementById("hour").value;
+    let min = document.getElementById("min").value;
+    let ap = document.getElementById("ap").value.toUpperCase;
+    const days = Array.from(document.querySelectorAll('input[type="checkbox"]')).map(box => box.checked ? 1 : 0);
+    
+    let alarm = {
+        hour: parseInt(hour),
+        min: parseInt(min),
+        p: ap,
+        days: days,
+        strtime: [
+            String(hour).padStart(2, "0"),
+            String(min).padStart(2, "0"),
+            ap
+        ]
+    }
+    const data = new TextEncoder().encode(JSON.stringify(alarm));
+    document.getElementById("output").innerText = "Sending..."
+    await characteristic.writeValueWithResponse(data);
+    document.getElementById("output").innerText = "Sent";
+}
+    </script>
+</body>
+</html>

@@ -5,9 +5,12 @@
 #include <NTPClient.h>
 #include <WiFiUdp.h>
 #include <Preferences.h>
+#include <string.h>
+#include <NimBLEDevice.h>
+#include <ArduinoJson.h>
 
-const char* ssid     = "";
-const char* password = "";
+const char* ssid     = "Optimus Prime";
+const char* password = "jaibhole";
 
 #define TFT_SCLK 9
 #define TFT_MOSI 10
@@ -71,6 +74,7 @@ void showtimedaydate(struct tm *t){
   date = t->tm_mday;
   int month = t->tm_mon + 1;
   String mon = months[month-1];
+  day = t->tm_wday;
   today = days[day];
   int year = t->tm_year + 1900;
   
@@ -95,16 +99,112 @@ void showtimedaydate(struct tm *t){
 }
 
 // alarm config
-int alarmd[7] = {0,0,0,0,0,0,0};
-int alarmh = 12;
-int alarmm = 0;
-String alarmp = "AM";
-String alarmdat[3] = {"12", "00", "AM"};
+int alarmringed[3] = {0,0,0};
+struct alarmtime {
+  int hour;
+  int min;
+  char p[3];
+  int days[7];
+  char strtime[3][3];
+};
+
+alarmtime alarmprofiles[3] = {
+  {12,0,"AM",{0,0,0,0,0,0,0},{"12", "00", "AM"}},
+  {12,0,"AM",{0,0,0,0,0,0,0},{"12", "00", "AM"}},
+  {12,0,"AM",{0,0,0,0,0,0,0},{"12", "00", "AM"}}
+};
+
+unsigned long snoozering;
+int selectedprofileindex = 0;
+#define SAP (alarmprofiles[selectedprofileindex]) // Sealected Alarm Profile
+
+int alarmsettingpos = 0;
 int alarmstate = 0;
 // 0 - idle
 // 1 - ringing
-// 2 - dismissed
-int alarmsettingpos = 0;
+
+alarmtime alarmBLE;
+
+int mode = 0;
+int prevmode = -1;
+// 0 - home
+// 1 - stopwatch
+// 2 - timer
+// 3 - alarm
+// 4 - timer ringing
+// 5 - alarm ringing
+
+#define SERVICE_UUID        "12345678-1234-1234-1234-123456789000"
+#define CHARACTERISTIC_UUID "12345678-1234-1234-1234-123456789001"
+
+void resetalarmscreen(){
+  tft.fillScreen(0x000);
+  tft.setTextColor(tft.color565(255,90,90), 0x000);
+  tft.setTextSize(1);
+  tft.setCursor(8,10);
+  tft.println("Alarm");
+  tft.setTextSize(2);
+  tft.setCursor(264,10);
+  tft.println(selectedprofileindex+1);
+  
+  tft.setTextColor(tft.color565(255,255,255), 0x000);
+  tft.setTextSize(3);
+  tft.setCursor(70,15);
+  tft.println(
+      String(SAP.strtime[0]) + ":" +
+      SAP.strtime[1] + " " +
+      SAP.p
+    );
+
+    tft.setTextSize(2);
+  for (int i=0;i<7;i++){
+    tft.setCursor(93 + i*14,48);
+    if (SAP.days[i]){
+      tft.setTextColor(tft.color565(255,255,0), 0x000);
+    }
+    tft.print(daysShort[i]);
+    tft.setTextColor(tft.color565(255,255,255), 0x000);
+  }
+}
+
+class AlarmCallbacks : public NimBLECharacteristicCallbacks {
+
+    void onWrite(NimBLECharacteristic *pCharacteristic,
+                 NimBLEConnInfo &connInfo) override {
+
+        Serial.println("Alarm data recieved!");
+        std::string received = pCharacteristic->getValue();
+        Serial.println(received.c_str());
+        JsonDocument doc;
+        DeserializationError error =
+            deserializeJson(doc, received);
+        if (error) {
+            Serial.print("JSON ERROR: ");
+            Serial.println(error.c_str());
+            return;
+        }
+
+        alarmBLE.hour = doc["hour"] | 0;
+        alarmBLE.min = doc["min"] | 0;
+
+        strlcpy(alarmBLE.p, doc["p"] | "",
+                sizeof(alarmBLE.p));
+
+        for (int i = 0; i < 7; i++) {
+            alarmBLE.days[i] = doc["days"][i] | 0;
+        }
+
+        for (int i = 0; i < 3; i++) {
+            strlcpy(alarmBLE.strtime[i],
+                    doc["strtime"][i] | "",
+                    sizeof(alarmBLE.strtime[i]));
+                  }
+        SAP = alarmBLE;
+        prefs.putBytes("alarmprofiles", &alarmprofiles, sizeof(alarmprofiles));
+        delay(200); // to prevent unwanted snooze ringing.
+        if (mode == 3) resetalarmscreen();
+    }
+};
 
 int duty = 350;
 
@@ -126,30 +226,42 @@ void setup() {
   tft.setTextColor(tft.color565(255,255,255), 0x000);
 
   WiFi.begin(ssid, password);
-  Serial.print("Connecting");
+  Serial.print("Connecting to Wifi");
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
     Serial.print(".");
   }
-
+  
   prefs.begin("data",false); 
-  // alarm config
-  if (prefs.getBytesLength("alarmd") == sizeof(alarmd)) {
-    prefs.getBytes("alarmd",alarmd,sizeof(alarmd));
+  if (prefs.getBytesLength("alarmprofiles") == sizeof(alarmprofiles)) {
+    prefs.getBytes("alarmprofiles",&alarmprofiles,sizeof(alarmprofiles));
   }
-  alarmh = prefs.getInt("alarmh", 12);
-  alarmm = prefs.getInt("alarmm", 0);
-  alarmp = prefs.getString("alarmp", "AM");
-  alarmdat[0] = (alarmh < 10 ? "0" : "") + String(alarmh);
-  alarmdat[1] = (alarmm < 10 ? "0" : "") + String(alarmm);
-  alarmdat[2] = alarmp;
+  
+  selectedprofileindex = prefs.getInt("selectedprofileindex", 0);
+  
+  NimBLEDevice::init("4th Dimension Tracker");
+  NimBLEServer *server = NimBLEDevice::createServer();
+  NimBLEService *service =
+    server->createService(SERVICE_UUID);
+  NimBLECharacteristic *characteristic =
+    service->createCharacteristic(
+      CHARACTERISTIC_UUID,
+      NIMBLE_PROPERTY::WRITE
+    );
+  characteristic->setCallbacks(new AlarmCallbacks());
+  service->start();
+  NimBLEAdvertising *advertising = NimBLEDevice::getAdvertising();
+  advertising->setName("4th Dimension Tracker");
+  advertising->addServiceUUID(SERVICE_UUID);
+  advertising->start();
+  Serial.println("BLE Alarm Server Started");
 
   // Volume
   duty = prefs.getInt("duty",350);
-
+  
   timeClient.begin();
   while (!timeClient.update()) {
-      timeClient.forceUpdate();
+    timeClient.forceUpdate();
   }
   String time = getTime();
   time_t now = timeClient.getEpochTime();
@@ -230,15 +342,6 @@ void beep(int frequency,int duration){
   ledcWrite(buzzer, 0);
 }
 
-int mode = 0;
-int prevmode = -1;
-// 0 - home
-// 1 - stopwatch
-// 2 - timer
-// 3 - alarm
-// 4 - alarm ringing
-// 5 - timer ringing
-
 int prev_b1 = 1;
 int prev_b2 = 1;
 int prev_b3 = 1;
@@ -314,23 +417,42 @@ void loop() {
   day = t->tm_wday;
 
   //alarm ringing
-  bool alarmMatches =
-    day >= 0 &&
-    alarmd[day] &&
-    time == (alarmdat[0] + ":" + alarmdat[1] + " " + alarmdat[2]);
-  if (alarmMatches && (alarmstate == 0) && (mode != 3)){
-    alarmstate = 1;
-    mode = 5;
-    tft.fillScreen(0x0000);
-    tft.setTextSize(2);
-    tft.setTextColor(tft.color565(255,0,0), 0x000);
-    tft.setCursor(96,9);
-    tft.println("Wake Up!");
-    tft.setTextColor(tft.color565(255,255,255), 0x000);
-    startMusic();
-  }
-  if (!alarmMatches && (alarmstate != 1)) alarmstate = 0;
+  if (day >= 0 && day < 7 && mode != 5) {
+    for (int i = 0; i < 3; i++) {
+      int alarmHour24 = alarmprofiles[i].hour % 12;
 
+      if (strcmp(alarmprofiles[i].p, "PM") == 0) {
+        alarmHour24 += 12;
+      }
+
+      bool matches =
+        alarmprofiles[i].days[day] &&
+        t->tm_hour == alarmHour24 &&
+        t->tm_min == alarmprofiles[i].min;
+
+      if (matches || ((millis() >= snoozering) && (millis() <= snoozering+500))) {
+        if ((!alarmringed[i] && mode != 3)){
+          alarmringed[i] = 1;
+          alarmstate = 1;
+          mode = 5;
+          
+          startMusic();
+          
+          tft.fillScreen(0x0000);
+          tft.setTextSize(2);
+          tft.setTextColor(tft.color565(255, 0, 0), 0x000);
+          tft.setCursor(96, 9);
+          tft.println("Wake Up!");
+          tft.setTextColor(tft.color565(255, 255, 255), 0x000);
+          showtimedaydate(t);
+          break;
+        }
+      }else{
+        alarmringed[i] = 0;
+      }
+    }
+  }
+  
   if (mode == 0){ // home screen
     if (prevmode != 0){
       tft.fillScreen(0x000);
@@ -508,38 +630,27 @@ void loop() {
   
   else if (mode == 3){ // alarm
     if (prevmode != 3){ // show initial config
-      tft.fillScreen(0x000);
-      tft.setTextColor(tft.color565(255,90,90), 0x000);
-      tft.setTextSize(1);
-      tft.setCursor(8,10);
-      tft.println("Alarm");
-
-      tft.setTextColor(tft.color565(255,255,255), 0x000);
-      tft.setTextSize(3);
-      tft.setCursor(70,15);
-      tft.println(alarmdat[0] + ":" + alarmdat[1] + " " + alarmp);
-
-      tft.setTextSize(2);
-      for (int i=0;i<7;i++){
-        tft.setCursor(93 + i*14,48);
-        if (alarmd[i]){
-          tft.setTextColor(tft.color565(255,255,0), 0x000);
-        }
-        tft.print(daysShort[i]);
-        tft.setTextColor(tft.color565(255,255,255), 0x000);
+      resetalarmscreen();
+    }
+    if (b6pressed){
+      selectedprofileindex += 1;
+      if (selectedprofileindex > 2){
+        selectedprofileindex = 0;
       }
+      prefs.putInt("selectedprofileindex", selectedprofileindex);
+      resetalarmscreen();
     }
     if (alarmsettingpos < 3){ // assign colour to selected
       tft.setTextSize(3);
       tft.setCursor(70+(36*alarmsettingpos) + 18*(alarmsettingpos),15);
       tft.setTextColor(tft.color565(0,255,0), 0x000);
-      tft.print(alarmdat[alarmsettingpos]);
+      tft.print(SAP.strtime[alarmsettingpos]);
       tft.setTextColor(tft.color565(255,255,255), 0x000);
     }else{
       tft.setTextSize(2);
       tft.setCursor(93+(14*(alarmsettingpos-3)),48);
       tft.setTextColor(tft.color565(0,255,0), 0x000);
-      if (alarmd[alarmsettingpos-3]){
+      if (SAP.days[alarmsettingpos-3]){
         tft.setTextColor(tft.color565(0,200,0), 0x000);
       } else{
         tft.setTextColor(tft.color565(0,255,0), 0x000);
@@ -552,11 +663,11 @@ void loop() {
         tft.setTextSize(3);
         tft.setCursor(70+(36*alarmsettingpos) + 18*(alarmsettingpos),15);
         tft.setTextColor(tft.color565(255,255,255), 0x000);
-        tft.print(alarmdat[alarmsettingpos]);
+        tft.print(SAP.strtime[alarmsettingpos]);
       }else{
         tft.setTextSize(2);
         tft.setCursor(93+(14*(alarmsettingpos-3)),48);
-        if (alarmd[alarmsettingpos-3]){
+        if (SAP.days[alarmsettingpos-3]){
           tft.setTextColor(tft.color565(255,255,0), 0x000);
         }else{
           tft.setTextColor(tft.color565(255,255,255), 0x000);
@@ -569,44 +680,59 @@ void loop() {
 
     if(b4pressed){ // increase selected
       if (alarmsettingpos == 0){
-        alarmh = (alarmh % 12) + 1;
-        prefs.putInt("alarmh",alarmh);
-        alarmdat[0] = ((alarmh < 10)? "0":"") + String(alarmh);
+        SAP.hour = (SAP.hour % 12) + 1;
+        snprintf(SAP.strtime[0], 3,
+         "%02d", SAP.hour);
       }else if (alarmsettingpos == 1){
-        alarmm = (alarmm + 1) % 60;
-        prefs.putInt("alarmm",alarmm);
-        alarmdat[1] = ((alarmm < 10)? "0":"") + String(alarmm);
+        SAP.min = (SAP.min + 1) % 60;
+        snprintf(SAP.strtime[1], 3,
+         "%02d", SAP.min);
       }else if (alarmsettingpos == 2){
-        if (alarmp == "AM") alarmp = "PM";
-        else alarmp = "AM";
-        alarmdat[2] = alarmp;
-        prefs.putString("alarmp", alarmp);
+        if (String(SAP.p) == "AM")
+            strcpy(SAP.p, "PM");
+        else
+            strcpy(SAP.p, "AM");
+
+        strcpy(SAP.strtime[2],
+              SAP.p);
       }else{
-        alarmd[alarmsettingpos-3] = !(alarmd[alarmsettingpos-3]);
-        prefs.putBytes("alarmd", alarmd, sizeof(alarmd));
+        SAP.days[alarmsettingpos-3] = !(SAP.days[alarmsettingpos-3]);
       }
+      prefs.putBytes("alarmprofiles", &alarmprofiles, sizeof(alarmprofiles));
     }
     
     if(b5pressed){ // decrease selected
       if (alarmsettingpos == 0) {
-        alarmh = (alarmh == 1) ? 12 : alarmh - 1;
-        prefs.putInt("alarmh",alarmh);
-        alarmdat[0] = (alarmh < 10 ? "0" : "") + String(alarmh);
-      }else if (alarmsettingpos == 1) {
-        alarmm = (alarmm == 0) ? 59 : alarmm - 1;
-        prefs.putInt("alarmm",alarmm);
-        alarmdat[1] = (alarmm < 10 ? "0" : "") + String(alarmm);
-      }else if (alarmsettingpos == 2){
-        if (alarmp == "AM") alarmp = "PM";
-        else alarmp = "AM";
-        alarmdat[2] = alarmp;
-        prefs.putString("alarmp", alarmp);
-      }else{
-        alarmd[alarmsettingpos-3] = !(alarmd[alarmsettingpos-3]);
-        prefs.putBytes("alarmd", alarmd, sizeof(alarmd));
+          SAP.hour =
+              (SAP.hour == 1)
+              ? 12 : SAP.hour - 1;
+
+          snprintf(SAP.strtime[0], 3,
+                  "%02d", SAP.hour);
+
+      } else if (alarmsettingpos == 1) {
+          SAP.min =
+              (SAP.min == 0)
+              ? 59 : SAP.min - 1;
+
+          snprintf(SAP.strtime[1], 3,
+                  "%02d", SAP.min);
+
+      } else if (alarmsettingpos == 2) {
+          if (String(SAP.p) == "AM")
+              strcpy(SAP.p, "PM");
+          else
+              strcpy(SAP.p, "AM");
+
+          strcpy(SAP.strtime[2],
+                SAP.p);
+
+      } else {
+          SAP.days[alarmsettingpos - 3] =
+              !SAP.days[alarmsettingpos - 3];
       }
+      prefs.putBytes("alarmprofiles", &alarmprofiles, sizeof(alarmprofiles));
     }
-    
   }else if (mode == 4){ // timer ring
     if (ringtimer){
       ringtimer = false;
@@ -628,13 +754,23 @@ void loop() {
     updateMusic();
   }else if (mode == 5){ // alarm ring
     updateMusic();
-    if ((alarmstate == 1) && b1pressed){
-      stopMusic();
-      alarmstate = 2;
-      mode = 0;
-      tft.fillRect(90,8,110,17,0x0000);
-      tft.drawRect(91,9,102,12,tft.color565(255,255,255));
-      tft.fillRect(92,10,(duty/5),10,tft.color565(255,255,255));
+    if (alarmstate == 1){
+      if (b1pressed){ // dismiss
+        stopMusic();
+        alarmstate = 0;
+        mode = 0;
+        tft.fillRect(90,8,110,17,0x0000);
+        tft.drawRect(91,9,102,12,tft.color565(255,255,255));
+        tft.fillRect(92,10,(duty/5),10,tft.color565(255,255,255));
+      }else if (b4pressed){ // snooze
+        stopMusic();
+        alarmstate = 0;
+        mode = 0;
+        snoozering = millis()+300000; 
+        tft.fillRect(90,8,110,17,0x0000);
+        tft.drawRect(91,9,102,12,tft.color565(255,255,255));
+        tft.fillRect(92,10,(duty/5),10,tft.color565(255,255,255));
+      }
     }
     if ((time != last_time)) showtimedaydate(t);
     last_time = time;
